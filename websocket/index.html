@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sync 3D Multi-Abas</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+      body { margin: 0; overflow: hidden; }
+      canvas { display: block; }
+    </style>
+  </head>
+  <body>
+    <script>
+      const socket = io();
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(
+        75,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        1000
+      );
+      const renderer = new THREE.WebGLRenderer();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      document.body.appendChild(renderer.domElement);
+
+      camera.position.z = 10;
+
+      const ambientLight = new THREE.AmbientLight(0xffffff, 1);
+      scene.add(ambientLight);
+
+      const light = new THREE.DirectionalLight(0xffffff, 1);
+      light.position.set(0, -10, 10);
+      light.castShadow = true;
+      light.shadow.mapSize.width = 1024;
+      light.shadow.mapSize.height = 1024;
+      scene.add(light);
+
+      const spheres = {};
+
+      socket.on("update", (data) => {
+        for (const id in spheres) {
+          if (!(id in data)) {
+            scene.remove(spheres[id]);
+            delete spheres[id];
+          }
+        }
+
+
+        for (const id in data) {
+          if (!spheres[id]) {
+            const geometry = new THREE.SphereGeometry(1, 32, 32);
+            const material = new THREE.MeshStandardMaterial({
+              color: data[id].color,
+              metalness: 0.8,
+              roughness: 0.2
+            });
+            const sphere = new THREE.Mesh(geometry, material);
+            sphere.position.x = data[id].x;
+            sphere.position.y = data[id].y;
+            sphere.castShadow = true;
+            sphere.receiveShadow = true;
+            scene.add(sphere);
+            spheres[id] = sphere;
+          } else {
+            spheres[id].position.x = data[id].x;
+            spheres[id].position.y = data[id].y;
+          }
+        }
+      });
+
+      function animate() {
+        requestAnimationFrame(animate);
+        renderer.render(scene, camera);
+      }
+      animate();
+    </script>
+  </body>
+</html>

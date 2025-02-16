@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sync 3D Multi-Tabs - BroadcastChannel Independent</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+      body { margin: 0; overflow: hidden; }
+      canvas { display: block; }
+    </style>
+  </head>
+  <body>
+    <script>
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      document.body.appendChild(renderer.domElement);
+      camera.position.z = 10;
+
+      const ambientLight = new THREE.AmbientLight(0xffffff, 1);
+      scene.add(ambientLight);
+      
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+      directionalLight.position.set(0, -10, 10);
+      directionalLight.castShadow = true;
+      directionalLight.shadow.mapSize.width = 1024;
+      directionalLight.shadow.mapSize.height = 1024;
+      scene.add(directionalLight);
+
+      const spheresMeshes = {};
+
+      const tabId = Date.now() + '-' + Math.random();
+
+      let mySphereState = {
+        id: tabId,
+        x: Math.random() * 8 - 4,
+        y: Math.random() * 8 - 4,
+        vx: (Math.random() - 0.5) * 0.2,
+        vy: (Math.random() - 0.5) * 0.2,
+        color: Math.floor(Math.random() * 0xffffff)
+      };
+
+      let allSpheres = {};
+      allSpheres[tabId] = mySphereState;
+
+      const bc = new BroadcastChannel('spheresChannel');
+
+      bc.postMessage({ type: 'join', state: mySphereState });
+
+      bc.onmessage = (event) => {
+        const msg = event.data;
+        switch(msg.type) {
+          case 'stateUpdate':
+            allSpheres[msg.state.id] = msg.state;
+            break;
+          case 'join':
+            allSpheres[msg.state.id] = msg.state;
+            break;
+          case 'leave':
+            delete allSpheres[msg.id];
+            break;
+          default:
+            break;
+        }
+      };
+
+      window.addEventListener('beforeunload', () => {
+        bc.postMessage({ type: 'leave', id: tabId });
+        bc.close();
+      });
+
+      function updatePhysics() {
+        const radius = 1;
+
+        mySphereState.x += mySphereState.vx;
+        mySphereState.y += mySphereState.vy;
+
+        if (Math.abs(mySphereState.x) > 5) mySphereState.vx *= -1;
+        if (Math.abs(mySphereState.y) > 5) mySphereState.vy *= -1;
+
+        for (const id in allSpheres) {
+          if (id === tabId) continue;
+          const other = allSpheres[id];
+          const dx = mySphereState.x - other.x;
+          const dy = mySphereState.y - other.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 2 * radius && dist > 0) {
+            const nx = dx / dist;
+            const ny = dy / dist;
+            const relVx = mySphereState.vx - other.vx;
+            const relVy = mySphereState.vy - other.vy;
+            const dot = relVx * nx + relVy * ny;
+            if (dot < 0 && tabId > id) {
+              mySphereState.vx -= 0.5 * dot * nx;
+              mySphereState.vy -= 0.5 * dot * ny;
+              const overlap = 2 * radius - dist;
+              mySphereState.x += (overlap / 2) * nx;
+              mySphereState.y += (overlap / 2) * ny;
+            }
+          }
+        }
+
+        allSpheres[tabId] = mySphereState;
+        bc.postMessage({ type: 'stateUpdate', state: mySphereState });
+        setTimeout(updatePhysics, 16);
+      }
+      updatePhysics();
+
+      function animate() {
+        requestAnimationFrame(animate);
+
+        for (const id in spheresMeshes) {
+          if (!allSpheres[id]) {
+            scene.remove(spheresMeshes[id]);
+            delete spheresMeshes[id];
+          }
+        }
+
+        for (const id in allSpheres) {
+          if (!spheresMeshes[id]) {
+            const geometry = new THREE.SphereGeometry(1, 32, 32);
+            const material = new THREE.MeshStandardMaterial({
+              color: allSpheres[id].color,
+              metalness: 0.8,
+              roughness: 0.2
+            });
+            const sphere = new THREE.Mesh(geometry, material);
+            sphere.castShadow = true;
+            sphere.receiveShadow = true;
+            scene.add(sphere);
+            spheresMeshes[id] = sphere;
+          }
+          spheresMeshes[id].position.x = allSpheres[id].x;
+          spheresMeshes[id].position.y = allSpheres[id].y;
+        }
+        renderer.render(scene, camera);
+      }
+      animate();
+    </script>
+  </body>
+</html>
