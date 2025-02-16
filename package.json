@@ -5,8 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start-ws": "node web-socket.js",
-    "start-bcc": "node broadcast-channel.js"
+    "ws": "node web-socket.js",
+    "bcc": "node broadcast-channel.js"
   },
   "keywords": [],
   "author": "",
